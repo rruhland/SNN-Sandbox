@@ -18,6 +18,15 @@ const els = {
   pullStatus: document.querySelector("#pullStatus"),
   inspectorState: document.querySelector("#inspectorState"),
   inspectorMeta: document.querySelector("#inspectorMeta"),
+  inspectorControls: document.querySelector("#inspectorControls"),
+  localPatternSelect: document.querySelector("#localPatternSelect"),
+  runEpisodeBtn: document.querySelector("#runEpisodeBtn"),
+  stepTimestepBtn: document.querySelector("#stepTimestepBtn"),
+  autoplayBtn: document.querySelector("#autoplayBtn"),
+  stopReplayBtn: document.querySelector("#stopReplayBtn"),
+  evaluateAllBtn: document.querySelector("#evaluateAllBtn"),
+  deterministicToggle: document.querySelector("#deterministicToggle"),
+  localRunStatus: document.querySelector("#localRunStatus"),
   emptyState: document.querySelector("#emptyState"),
   inspectorWorkspace: document.querySelector("#inspectorWorkspace"),
   architecture: document.querySelector("#architecture"),
@@ -32,6 +41,8 @@ const els = {
 
 let liveMetrics = null;
 let pulledSnapshot = null;
+let localModel = null;
+let autoplayTimer = null;
 let renderedLiveSeq = -1;
 let renderedPullTrial = -1;
 const textCache = new Map();
@@ -146,65 +157,155 @@ function renderLiveMetrics() {
   if (pulledSnapshot) updateInspectorMeta();
 }
 
-function evaluatePulled(snapshot) {
-  const config = snapshot.config;
-  const inputHidden = snapshot.weights.inputHidden;
-  const hiddenOutput = snapshot.weights.hiddenOutput;
-  const patterns = [
-    [0, 0],
-    [0, 1],
-    [1, 0],
-    [1, 1],
-  ];
-  return patterns.map((pattern) => {
-    const encoded = Array(config.inputNeurons).fill(0);
+class LocalPulledSNN {
+  constructor(snapshot) {
+    this.snapshot = snapshot;
+    this.config = snapshot.config || {};
+    this.inputHidden = snapshot.weights?.inputHidden || [];
+    this.hiddenOutput = snapshot.weights?.hiddenOutput || [];
+    this.patterns = {
+      "0+0": [0, 0],
+      "0+1": [0, 1],
+      "1+0": [1, 0],
+      "1+1": [1, 1],
+    };
+    this.resultHistory = [];
+    this.evalHistory = [];
+    this.lastEvalResults = [];
+    this.resetEpisode("0+0", true);
+  }
+
+  resetEpisode(patternKey, deterministic = true) {
+    this.timestep = 0;
+    this.currentPatternKey = patternKey;
+    this.currentPattern = this.patterns[patternKey] || this.patterns["0+0"];
+    this.deterministic = deterministic;
+    this.hiddenCounts = Array(this.config.hiddenNeurons || 0).fill(0);
+    this.outputDrive = Array(this.config.outputNeurons || 0).fill(0);
+    this.currentInputSpikes = Array(this.config.inputNeurons || 0).fill(0);
+    this.currentHiddenSpikes = Array(this.config.hiddenNeurons || 0).fill(0);
+    this.currentOutputCurrent = Array(this.config.outputNeurons || 0).fill(0);
+    this.raster = [];
+    this.finished = false;
+    this.lastResult = null;
+  }
+
+  encode(pattern) {
+    const encoded = Array(this.config.inputNeurons || 0).fill(0);
     encoded[pattern[0] === 0 ? 0 : 1] = 1;
     encoded[pattern[1] === 0 ? 2 : 3] = 1;
-    const hiddenCurrent = inputHidden[0].map((_, hiddenIndex) =>
-      encoded.reduce((sum, value, inputIndex) => sum + value * inputHidden[inputIndex][hiddenIndex], 0)
-    );
+    return encoded;
+  }
+
+  sampleInputSpikes(encoded) {
+    if (this.deterministic) return [...encoded];
+    const inputRate = this.config.inputRate ?? 0.72;
+    const backgroundRate = this.config.backgroundRate ?? 0;
+    return encoded.map((value) => (Math.random() < (value ? inputRate : backgroundRate) ? 1 : 0));
+  }
+
+  sparseHiddenSpikes(hiddenCurrent) {
+    const winners = this.config.hiddenWinners || 1;
+    const threshold = this.config.hiddenThreshold ?? 0;
     const ranked = hiddenCurrent
       .map((value, index) => ({ value, index }))
-      .filter((item) => item.value > config.hiddenThreshold)
+      .filter((item) => item.value > threshold)
       .sort((a, b) => b.value - a.value)
-      .slice(0, config.hiddenWinners);
-    const hiddenSpikes = Array(config.hiddenNeurons).fill(0);
-    for (const item of ranked) hiddenSpikes[item.index] = 1;
-    const outputDrive = Array(config.outputNeurons).fill(0);
-    for (let output = 0; output < config.outputNeurons; output += 1) {
+      .slice(0, winners);
+    const spikes = Array(this.config.hiddenNeurons || 0).fill(0);
+    for (const item of ranked) spikes[item.index] = 1;
+    return spikes;
+  }
+
+  step() {
+    if (this.finished) return { done: true, result: this.lastResult };
+    const episodeSteps = this.config.episodeSteps || 1;
+    if (this.timestep >= episodeSteps) return this.finishEpisode();
+
+    const encoded = this.encode(this.currentPattern);
+    this.currentInputSpikes = this.sampleInputSpikes(encoded);
+    const hiddenCurrent = Array(this.config.hiddenNeurons || 0).fill(0);
+    for (let hidden = 0; hidden < hiddenCurrent.length; hidden += 1) {
       let current = 0;
-      for (let hidden = 0; hidden < config.hiddenNeurons; hidden += 1) {
-        current += hiddenSpikes[hidden] * hiddenOutput[hidden][output];
+      for (let input = 0; input < this.currentInputSpikes.length; input += 1) {
+        current += this.currentInputSpikes[input] * (this.inputHidden[input]?.[hidden] || 0);
       }
-      outputDrive[output] = (current + (current > config.outputThreshold ? 0.05 : 0)) * config.episodeSteps;
+      hiddenCurrent[hidden] = current + (this.deterministic ? 0 : Math.random() * 0.035);
     }
-    const target = pattern[0] + pattern[1];
-    const prediction = outputDrive.indexOf(Math.max(...outputDrive));
-    const competitors = outputDrive.filter((_, index) => index !== target);
-    return {
-      pattern: `${pattern[0]}+${pattern[1]}`,
+
+    this.currentHiddenSpikes = this.sparseHiddenSpikes(hiddenCurrent);
+    this.currentOutputCurrent = Array(this.config.outputNeurons || 0).fill(0);
+    for (let output = 0; output < this.currentOutputCurrent.length; output += 1) {
+      let current = 0;
+      for (let hidden = 0; hidden < this.currentHiddenSpikes.length; hidden += 1) {
+        current += this.currentHiddenSpikes[hidden] * (this.hiddenOutput[hidden]?.[output] || 0);
+      }
+      this.currentOutputCurrent[output] = current;
+      this.outputDrive[output] += current + (current > (this.config.outputThreshold ?? 0) ? 0.05 : 0);
+    }
+
+    for (let hidden = 0; hidden < this.currentHiddenSpikes.length; hidden += 1) {
+      this.hiddenCounts[hidden] += this.currentHiddenSpikes[hidden];
+    }
+    this.raster.push(this.currentHiddenSpikes.slice(0, 96));
+    if (this.raster.length > 120) this.raster.shift();
+    this.timestep += 1;
+
+    if (this.timestep >= episodeSteps) return this.finishEpisode();
+    return { done: false, result: null };
+  }
+
+  finishEpisode() {
+    const target = this.currentPattern[0] + this.currentPattern[1];
+    const maxDrive = Math.max(...this.outputDrive);
+    const prediction = this.outputDrive.indexOf(maxDrive);
+    const competitors = this.outputDrive.filter((_, index) => index !== target);
+    const result = {
+      pattern: this.currentPatternKey,
       target,
       prediction,
       correct: prediction === target,
-      outputDrive,
-      activeHidden: ranked.length,
-      margin: outputDrive[target] - Math.max(...competitors),
+      outputDrive: [...this.outputDrive],
+      activeHidden: this.hiddenCounts.filter((value) => value > 0).length,
+      margin: this.outputDrive[target] - Math.max(...competitors),
+      timestep: this.timestep,
     };
-  });
+    this.finished = true;
+    this.lastResult = result;
+    this.resultHistory.push(result);
+    if (this.resultHistory.length > 200) this.resultHistory.shift();
+    return { done: true, result };
+  }
+
+  runEpisode(patternKey, deterministic = this.deterministic) {
+    this.resetEpisode(patternKey, deterministic);
+    let state = { done: false, result: null };
+    while (!state.done) state = this.step();
+    return state.result;
+  }
+
+  evaluateAll(deterministic = this.deterministic) {
+    const results = Object.keys(this.patterns).map((patternKey) => this.runEpisode(patternKey, deterministic));
+    const accuracy = results.filter((item) => item.correct).length / results.length;
+    this.lastEvalResults = results;
+    this.evalHistory.push({ time: performance.now(), accuracy, trial: this.snapshot.trial });
+    if (this.evalHistory.length > 120) this.evalHistory.shift();
+    return results;
+  }
 }
 
-function pullSummary(snapshot, evalResults) {
-  const correct = evalResults.filter((item) => item.correct).length;
-  return {
-    evalAccuracy: correct / evalResults.length,
-    evalResults,
-  };
+function localAccuracy(results) {
+  if (!results.length) return 0;
+  return results.filter((item) => item.correct).length / results.length;
 }
 
 function updateInspectorMeta() {
   if (!pulledSnapshot) return;
   const liveTrial = liveMetrics?.trials ?? "-";
-  setText(els.inspectorState, `Viewing model from trial ${pulledSnapshot.trial}; trainer currently at trial ${liveTrial}.`);
+  setText(
+    els.inspectorState,
+    `Running pulled model from trial ${pulledSnapshot.trial} locally. Trainer currently at trial ${liveTrial}.`
+  );
   setText(
     els.inspectorMeta,
     `Pulled ${new Date(pulledSnapshot.pulledAt).toLocaleTimeString()} | export ${pulledSnapshot.exportMs}ms`
@@ -212,29 +313,32 @@ function updateInspectorMeta() {
 }
 
 function renderPulledInspector(snapshot) {
-  const evalResults = evaluatePulled(snapshot);
-  const summary = pullSummary(snapshot, evalResults);
+  stopAutoplay();
+  localModel = new LocalPulledSNN(snapshot);
+  const evalResults = localModel.evaluateAll(true);
+  localModel.resetEpisode(els.localPatternSelect.value, els.deterministicToggle.checked);
   els.emptyState.classList.add("hidden");
+  els.inspectorControls.classList.remove("hidden");
   els.inspectorWorkspace.classList.remove("hidden");
   setText(els.pullStatus, `Pulled trial ${snapshot.trial}`);
   setText(els.architecture, `${snapshot.architecture.inputs} -> ${snapshot.architecture.hidden} -> ${snapshot.architecture.outputs}`);
+  setText(els.localRunStatus, `Local ready | eval ${percent(localAccuracy(evalResults))}`);
   updateInspectorMeta();
-  drawNetwork(snapshot, evalResults);
-  drawRaster(snapshot);
+  drawNetwork(localModel);
+  drawRaster(localModel);
   drawWeights(snapshot);
   drawEvaluation(evalResults);
   drawConfusion(snapshot.confusion || []);
-  drawEvalAccuracy(summary.evalAccuracy);
+  drawEvalAccuracyHistory(localModel);
 }
 
-function drawNetwork(snapshot, evalResults) {
+function drawNetwork(model) {
   const { ctx, width, height } = setupCanvas(els.networkCanvas);
   clear(ctx, width, height);
-  const recent = snapshot.recentSpikes || [];
-  const activity = recent.length
-    ? recent[0].map((_, col) => recent.reduce((sum, row) => sum + (row[col] || 0), 0) / recent.length)
-    : [];
-  const outputs = evalResults.at(-1)?.outputDrive || [0, 0, 0];
+  const activity = model.hiddenCounts.map((value) => value / Math.max(1, model.config.episodeSteps || 1));
+  const hiddenSpikes = model.currentHiddenSpikes || [];
+  const inputs = model.currentInputSpikes || [];
+  const outputs = model.outputDrive || [0, 0, 0];
   const leftX = 70;
   const midX = width * 0.5;
   const rightX = width - 70;
@@ -253,16 +357,19 @@ function drawNetwork(snapshot, evalResults) {
   for (let i = 0; i < Math.min(24, activity.length); i += 1) {
     const hy = 35 + (i / 23) * (height - 70);
     const active = activity[i] || 0;
-    ctx.fillStyle = `rgba(55, 209, 143, ${0.2 + Math.min(0.8, active * 8)})`;
+    const instant = hiddenSpikes[i] ? 0.35 : 0;
+    ctx.fillStyle = `rgba(55, 209, 143, ${0.16 + instant + Math.min(0.65, active * 4)})`;
     ctx.beginPath();
-    ctx.arc(midX, hy, 4 + Math.min(8, active * 24), 0, Math.PI * 2);
+    ctx.arc(midX, hy, 4 + Math.min(8, active * 18) + (hiddenSpikes[i] ? 3 : 0), 0, Math.PI * 2);
     ctx.fill();
   }
   inputY.forEach((y, index) => {
     ctx.fillStyle = "#58a6ff";
+    ctx.globalAlpha = inputs[index] ? 1 : 0.35;
     ctx.beginPath();
     ctx.arc(leftX, y, 12, 0, Math.PI * 2);
     ctx.fill();
+    ctx.globalAlpha = 1;
     ctx.fillStyle = "#d7e5dc";
     ctx.fillText(["A0", "A1", "B0", "B1"][index], leftX - 10, y + 28);
   });
@@ -277,10 +384,13 @@ function drawNetwork(snapshot, evalResults) {
     ctx.fillStyle = "#d7e5dc";
     ctx.fillText(`${index}`, rightX - 4, y + 32);
   });
+  ctx.fillStyle = "#9fb0a6";
+  ctx.font = "12px ui-monospace, monospace";
+  ctx.fillText(`timestep ${model.timestep}/${model.config.episodeSteps || 0} | ${model.currentPatternKey}`, 18, 24);
 }
 
-function drawRaster(snapshot) {
-  const raster = snapshot.recentSpikes || [];
+function drawRaster(model) {
+  const raster = model.raster?.length ? model.raster : pulledSnapshot?.recentSpikes || [];
   const { ctx, width, height } = setupCanvas(els.rasterCanvas);
   clear(ctx, width, height);
   if (!raster.length) return;
@@ -344,15 +454,116 @@ function drawConfusion(matrix) {
   }
 }
 
-function drawEvalAccuracy(value) {
+function drawEvalAccuracyHistory(model) {
   const { ctx, width, height } = setupCanvas(els.evalAccuracyCanvas);
   clear(ctx, width, height);
   ctx.fillStyle = "#9fb0a6";
   ctx.font = "15px system-ui";
-  ctx.fillText("Evaluation Accuracy", 22, 34);
+  ctx.fillText("Local Eval Accuracy", 22, 34);
+  const history = model?.evalHistory || [];
+  const value = history.at(-1)?.accuracy ?? localAccuracy(model?.lastEvalResults || []);
   ctx.fillStyle = "#eef5ef";
   ctx.font = "42px system-ui";
   ctx.fillText(percent(value), 22, 88);
+  if (history.length < 2) return;
+  const graphX = 22;
+  const graphY = 118;
+  const graphW = width - 44;
+  const graphH = height - 144;
+  ctx.strokeStyle = "rgba(159, 176, 166, 0.35)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(graphX, graphY, graphW, graphH);
+  ctx.strokeStyle = "#37d18f";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  history.forEach((point, index) => {
+    const x = graphX + (index / Math.max(1, history.length - 1)) * graphW;
+    const y = graphY + graphH - Math.max(0, Math.min(1, point.accuracy)) * graphH;
+    if (index === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+}
+
+function selectedDeterministic() {
+  return els.deterministicToggle.checked;
+}
+
+function selectedPattern() {
+  return els.localPatternSelect.value || "0+0";
+}
+
+function redrawLocalInspector(results = localModel?.lastEvalResults || []) {
+  if (!localModel || !pulledSnapshot) return;
+  drawNetwork(localModel);
+  drawRaster(localModel);
+  drawEvaluation(results.length ? results : localModel.resultHistory.slice(-4));
+  drawEvalAccuracyHistory(localModel);
+}
+
+function stopAutoplay() {
+  if (!autoplayTimer) return;
+  clearInterval(autoplayTimer);
+  autoplayTimer = null;
+  setText(els.localRunStatus, "Replay stopped");
+}
+
+function clearAutoplayTimer() {
+  if (!autoplayTimer) return;
+  clearInterval(autoplayTimer);
+  autoplayTimer = null;
+}
+
+function playLocalEpisode(repeat) {
+  if (!localModel) return;
+  clearAutoplayTimer();
+  localModel.resetEpisode(selectedPattern(), selectedDeterministic());
+  setText(els.localRunStatus, repeat ? "Autoplay running" : "Episode replay running");
+  autoplayTimer = setInterval(() => {
+    const state = localModel.step();
+    redrawLocalInspector(state.result ? [state.result] : localModel.lastEvalResults);
+    if (!state.done) return;
+    if (repeat) {
+      if (state.result) {
+        setText(els.localRunStatus, `${state.result.pattern} -> ${state.result.prediction}; replaying`);
+      }
+      localModel.resetEpisode(selectedPattern(), selectedDeterministic());
+      return;
+    }
+    clearAutoplayTimer();
+    if (state.result) {
+      setText(els.localRunStatus, `${state.result.pattern} -> ${state.result.prediction} (${state.result.correct ? "ok" : "miss"})`);
+    }
+  }, 70);
+}
+
+function runLocalEpisode() {
+  playLocalEpisode(false);
+}
+
+function stepLocalTimestep() {
+  if (!localModel) return;
+  if (localModel.finished || localModel.currentPatternKey !== selectedPattern()) {
+    localModel.resetEpisode(selectedPattern(), selectedDeterministic());
+  }
+  const state = localModel.step();
+  const status = state.done && state.result
+    ? `${state.result.pattern} -> ${state.result.prediction} (${state.result.correct ? "ok" : "miss"})`
+    : `Step ${localModel.timestep}/${localModel.config.episodeSteps || 0}`;
+  setText(els.localRunStatus, status);
+  redrawLocalInspector(state.result ? [state.result] : localModel.lastEvalResults);
+}
+
+function startAutoplay() {
+  playLocalEpisode(true);
+}
+
+function evaluateLocalAll() {
+  if (!localModel) return;
+  stopAutoplay();
+  const results = localModel.evaluateAll(selectedDeterministic());
+  setText(els.localRunStatus, `Local eval ${percent(localAccuracy(results))}`);
+  redrawLocalInspector(results);
 }
 
 async function pullCurrent() {
@@ -387,6 +598,24 @@ els.saveBtn.addEventListener("click", async () => {
   await refreshStates();
 });
 els.pullBtn.addEventListener("click", pullCurrent);
+els.runEpisodeBtn.addEventListener("click", runLocalEpisode);
+els.stepTimestepBtn.addEventListener("click", stepLocalTimestep);
+els.autoplayBtn.addEventListener("click", startAutoplay);
+els.stopReplayBtn.addEventListener("click", stopAutoplay);
+els.evaluateAllBtn.addEventListener("click", evaluateLocalAll);
+els.localPatternSelect.addEventListener("change", () => {
+  if (!localModel) return;
+  stopAutoplay();
+  localModel.resetEpisode(selectedPattern(), selectedDeterministic());
+  setText(els.localRunStatus, `Ready ${selectedPattern()}`);
+  redrawLocalInspector();
+});
+els.deterministicToggle.addEventListener("change", () => {
+  if (!localModel) return;
+  localModel.resetEpisode(selectedPattern(), selectedDeterministic());
+  setText(els.localRunStatus, selectedDeterministic() ? "Deterministic mode" : "Random mode");
+  redrawLocalInspector();
+});
 els.loadBtn.addEventListener("click", () => {
   if (els.stateSelect.value) command("load", { name: els.stateSelect.value });
 });

@@ -82,6 +82,28 @@
           <div id="inspectorMeta" class="inspector-meta">No snapshot</div>
         </div>
 
+        <div id="inspectorControls" class="inspector-controls hidden">
+          <label>
+            Pattern
+            <select id="localPatternSelect">
+              <option value="0+0">0+0</option>
+              <option value="0+1">0+1</option>
+              <option value="1+0">1+0</option>
+              <option value="1+1">1+1</option>
+            </select>
+          </label>
+          <button id="runEpisodeBtn">Run Episode</button>
+          <button id="stepTimestepBtn">Step Timestep</button>
+          <button id="autoplayBtn">Autoplay</button>
+          <button id="stopReplayBtn">Stop Replay</button>
+          <button id="evaluateAllBtn">Evaluate All</button>
+          <label class="toggle-row">
+            <input id="deterministicToggle" type="checkbox" checked />
+            Deterministic
+          </label>
+          <span id="localRunStatus">No local run</span>
+        </div>
+
         <div id="emptyState" class="empty-state">Click Pull Current to inspect the current model.</div>
 
         <section id="inspectorWorkspace" class="workspace hidden">
@@ -95,7 +117,7 @@
           <div class="panel">
             <div class="panel-title">
               <h2>Spike raster</h2>
-              <span>pulled snapshot</span>
+              <span>local replay</span>
             </div>
             <canvas id="rasterCanvas" width="720" height="360"></canvas>
           </div>

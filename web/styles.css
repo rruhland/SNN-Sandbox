@@ -211,6 +211,49 @@ select {
   font-family: ui-monospace, "Cascadia Code", "Segoe UI Mono", monospace;
 }
 
+.inspector-controls {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: minmax(120px, 160px) repeat(5, minmax(110px, auto)) minmax(145px, auto) minmax(180px, 1fr);
+  align-items: end;
+  gap: 10px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.inspector-controls label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.inspector-controls button,
+.inspector-controls select {
+  height: 38px;
+}
+
+.toggle-row {
+  grid-auto-flow: column;
+  justify-content: start;
+  align-items: center;
+}
+
+.toggle-row input {
+  width: 16px;
+  height: 16px;
+}
+
+#localRunStatus {
+  min-width: 180px;
+  color: var(--muted);
+  font-family: ui-monospace, "Cascadia Code", "Segoe UI Mono", monospace;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .empty-state {
   margin-top: 12px;
   min-height: 280px;
@@ -291,6 +334,7 @@ canvas {
   .live-stats,
   .actions,
   .control-strip,
+  .inspector-controls,
   .eval-list,
   .eval-visuals {
     grid-template-columns: 1fr;

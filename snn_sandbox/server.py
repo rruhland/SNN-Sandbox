@@ -179,6 +179,8 @@ class TrainerRuntime:
                     "hiddenThreshold": config.hidden_threshold,
                     "hiddenWinners": config.hidden_winners,
                     "outputThreshold": config.output_threshold,
+                    "inputRate": config.input_rate,
+                    "backgroundRate": config.background_rate,
                 },
                 "architecture": {
                     "inputs": config.input_neurons,
