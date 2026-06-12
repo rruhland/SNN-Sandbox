@@ -8,82 +8,116 @@
   </head>
   <body>
     <main class="shell">
-      <section class="topbar">
-        <div>
-          <h1>SNN Sandbox</h1>
-          <p id="deviceLine">Connecting...</p>
+      <section class="trainer-dashboard">
+        <div class="trainer-status">
+          <div>
+            <h1>SNN Sandbox</h1>
+            <p id="deviceLine">Connecting...</p>
+          </div>
+          <div class="live-stats">
+            <article>
+              <span>Status</span>
+              <strong id="statusValue">-</strong>
+            </article>
+            <article>
+              <span>Trials</span>
+              <strong id="trials">0</strong>
+            </article>
+            <article>
+              <span>Trials/sec</span>
+              <strong id="trialsPerSecond">0</strong>
+            </article>
+            <article>
+              <span>Training accuracy</span>
+              <strong id="accuracy">0%</strong>
+            </article>
+            <article>
+              <span>Last result</span>
+              <strong id="lastResult">-</strong>
+            </article>
+          </div>
         </div>
-        <div class="actions">
-          <button id="startBtn" class="primary">Start</button>
-          <button id="stopBtn">Stop</button>
-          <button id="stepBtn">Step</button>
-          <button id="resetBtn">Reset</button>
-          <button id="saveBtn">Save</button>
+
+        <div class="trainer-graph panel">
+          <div class="panel-title">
+            <h2>Training Graph</h2>
+            <span id="graphTrial">Trial 0</span>
+          </div>
+          <canvas id="accuracyCanvas" width="720" height="220"></canvas>
+        </div>
+
+        <div class="trainer-controls panel">
+          <div class="panel-title">
+            <h2>Controls</h2>
+            <span id="pullStatus">No pull yet</span>
+          </div>
+          <div class="actions">
+            <button id="startBtn" class="primary">Start</button>
+            <button id="stopBtn">Stop</button>
+            <button id="resetBtn">Reset</button>
+            <button id="saveBtn">Save</button>
+            <button id="pullBtn">Pull Current</button>
+          </div>
+          <div class="control-strip">
+            <label>
+              Speed
+              <input id="speedInput" type="range" min="1" max="128" value="8" />
+              <span id="speedValue">8</span>
+            </label>
+            <label>
+              Saved state
+              <select id="stateSelect"></select>
+            </label>
+            <button id="loadBtn">Load</button>
+          </div>
         </div>
       </section>
 
-      <section class="control-strip">
-        <label>
-          Speed
-          <input id="speedInput" type="range" min="1" max="128" value="8" />
-          <span id="speedValue">8</span>
-        </label>
-        <label>
-          Saved state
-          <select id="stateSelect"></select>
-        </label>
-        <button id="loadBtn">Load</button>
-      </section>
+      <section class="inspector">
+        <div class="inspector-header">
+          <div>
+            <h2>Pulled Model Inspector</h2>
+            <p id="inspectorState">Click Pull Current to inspect the current model.</p>
+          </div>
+          <div id="inspectorMeta" class="inspector-meta">No snapshot</div>
+        </div>
 
-      <section class="metrics-grid">
-        <article>
-          <span>Training accuracy</span>
-          <strong id="accuracy">0%</strong>
-        </article>
-        <article>
-          <span>Eval accuracy</span>
-          <strong id="evalAccuracy">0%</strong>
-        </article>
-        <article>
-          <span>Trials</span>
-          <strong id="trials">0</strong>
-        </article>
-        <article>
-          <span>Last result</span>
-          <strong id="lastResult">-</strong>
-        </article>
-      </section>
+        <div id="emptyState" class="empty-state">Click Pull Current to inspect the current model.</div>
 
-      <section class="workspace">
-        <div class="panel network-panel">
-          <div class="panel-title">
-            <h2>Network</h2>
-            <span id="architecture">4 -> 96 -> 3</span>
+        <section id="inspectorWorkspace" class="workspace hidden">
+          <div class="panel network-panel">
+            <div class="panel-title">
+              <h2>Network</h2>
+              <span id="architecture">-</span>
+            </div>
+            <canvas id="networkCanvas" width="720" height="360"></canvas>
           </div>
-          <canvas id="networkCanvas" width="720" height="360"></canvas>
-        </div>
-        <div class="panel">
-          <div class="panel-title">
-            <h2>Spike raster</h2>
-            <span>latest cache</span>
+          <div class="panel">
+            <div class="panel-title">
+              <h2>Spike raster</h2>
+              <span>pulled snapshot</span>
+            </div>
+            <canvas id="rasterCanvas" width="720" height="360"></canvas>
           </div>
-          <canvas id="rasterCanvas" width="720" height="360"></canvas>
-        </div>
-        <div class="panel">
-          <div class="panel-title">
-            <h2>Hidden -> output weights</h2>
-            <span>readout STDP</span>
+          <div class="panel">
+            <div class="panel-title">
+              <h2>Hidden -> output weights</h2>
+              <span>pulled snapshot</span>
+            </div>
+            <canvas id="weightsCanvas" width="720" height="360"></canvas>
           </div>
-          <canvas id="weightsCanvas" width="720" height="360"></canvas>
-        </div>
-        <div class="panel">
-          <div class="panel-title">
-            <h2>Evaluation</h2>
-            <span>all patterns</span>
+          <div class="panel">
+            <div class="panel-title">
+              <h2>Evaluation</h2>
+              <span>browser replay</span>
+            </div>
+            <div id="evalList" class="eval-list"></div>
+            <div class="eval-visuals">
+              <canvas id="confusionCanvas" width="360" height="260"></canvas>
+              <canvas id="evalAccuracyCanvas" width="360" height="260"></canvas>
+            </div>
           </div>
-          <div id="evalList" class="eval-list"></div>
-          <canvas id="confusionCanvas" width="360" height="260"></canvas>
-        </div>
+        </section>
       </section>
     </main>
     <script src="/app.js"></script>

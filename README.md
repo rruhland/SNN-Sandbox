@@ -8,8 +8,10 @@ Desktop-hosted spiking neural network sandbox for local/STDP experiments. The fi
 - PyTorch tensors run on CUDA by default. The code does not use autograd or backpropagation.
 - Input to hidden learning is local STDP from spike traces.
 - Hidden to output learning is reward-modulated STDP from hidden activity and correctness.
-- The browser UI controls the model, but never runs the model.
-- The server publishes compact cached snapshots over Server-Sent Events, so slow visualizers do not block training.
+- The browser UI controls the trainer, but never runs training.
+- The top trainer dashboard streams only cheap live metrics: running state, trials, trials/sec, accuracy, last result, and recent accuracy history.
+- The bottom model inspector is frozen. It updates only when `Pull Current` exports a model snapshot.
+- Pull exports weights, recent spikes, config, confusion, and stats for browser-side inspection while training continues.
 
 ## Quick Start
 
@@ -45,11 +47,11 @@ If you only need a slow smoke test on a machine without CUDA:
 ## Controls
 
 - `Start` and `Stop` toggle the desktop training loop.
-- `Step` runs one training episode.
 - `Reset` creates a fresh network.
 - `Speed` changes training episodes per backend tick.
 - `Save` writes current weights and metrics into `states/`.
 - `Load` restores a saved state.
+- `Pull Current` exports a frozen model snapshot into the bottom inspector without stopping training.
 
 ## Developer Smoke Test
 

@@ -25,24 +25,9 @@ body {
 }
 
 .shell {
-  width: min(1480px, calc(100vw - 28px));
+  width: min(1620px, calc(100vw - 24px));
   margin: 0 auto;
-  padding: 18px 0 28px;
-}
-
-.topbar,
-.control-strip,
-.metrics-grid,
-.workspace {
-  display: grid;
-  gap: 12px;
-}
-
-.topbar {
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--line);
+  padding: 12px 0 24px;
 }
 
 h1,
@@ -52,40 +37,114 @@ p {
 }
 
 h1 {
-  font-size: 24px;
-  font-weight: 720;
+  font-size: 22px;
 }
 
 h2 {
   font-size: 14px;
-  font-weight: 680;
 }
 
-p,
-span,
-label,
+button,
 select,
-button {
+label,
+span,
+p {
   font-size: 13px;
+}
+
+.trainer-dashboard {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.95fr) minmax(420px, 1.35fr) minmax(360px, 1.1fr);
+  gap: 12px;
+  align-items: stretch;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--line);
+}
+
+.trainer-status,
+.panel,
+.trainer-controls {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.trainer-status {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
 }
 
 #deviceLine,
 .panel-title span,
 article span,
-label {
+label,
+.inspector-meta,
+#inspectorState {
   color: var(--muted);
 }
 
-.actions {
-  display: flex;
-  flex-wrap: wrap;
+.live-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  justify-content: flex-end;
+}
+
+.live-stats article {
+  min-height: 72px;
+  padding: 10px;
+  background: #121815;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  display: grid;
+  align-content: center;
+  gap: 5px;
+}
+
+.live-stats article:last-child {
+  grid-column: span 2;
+}
+
+article strong {
+  font-size: 23px;
+  line-height: 1.05;
+}
+
+#lastResult {
+  font-size: 18px;
+}
+
+.panel-title {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.trainer-graph canvas {
+  height: 222px;
+}
+
+.trainer-controls {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 14px;
+  align-content: center;
 }
 
 button,
 select {
-  height: 34px;
+  height: 36px;
   border: 1px solid var(--line);
   background: var(--panel-2);
   color: var(--text);
@@ -109,9 +168,11 @@ button.primary {
 }
 
 .control-strip {
-  grid-template-columns: minmax(220px, 340px) minmax(180px, 280px) auto 1fr;
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) auto;
+  gap: 8px;
   align-items: end;
-  padding: 12px 0;
+  padding: 0 14px 14px;
 }
 
 label {
@@ -125,50 +186,52 @@ input[type="range"] {
 }
 
 select {
+  min-width: 0;
   padding: 0 9px;
 }
 
-.metrics-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-bottom: 12px;
+.inspector {
+  margin-top: 12px;
 }
 
-article,
-.panel {
+.inspector-header {
+  min-height: 92px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
 }
 
-article {
-  display: grid;
-  gap: 6px;
-  min-height: 76px;
-  padding: 13px;
+.inspector-meta {
+  white-space: nowrap;
+  font-family: ui-monospace, "Cascadia Code", "Segoe UI Mono", monospace;
 }
 
-article strong {
-  font-size: 24px;
-  line-height: 1;
+.empty-state {
+  margin-top: 12px;
+  min-height: 280px;
+  display: grid;
+  place-items: center;
+  background: #0c100f;
+  border: 1px dashed #365047;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 18px;
 }
 
 .workspace {
+  margin-top: 12px;
+  display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.panel {
-  min-width: 0;
-  overflow: hidden;
-}
-
-.panel-title {
-  height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--line);
+}
+
+.hidden {
+  display: none !important;
 }
 
 canvas {
@@ -186,7 +249,7 @@ canvas {
 }
 
 .eval-item {
-  min-height: 74px;
+  min-height: 70px;
   border: 1px solid var(--line);
   border-radius: 7px;
   padding: 9px;
@@ -206,19 +269,39 @@ canvas {
   border-color: rgba(255, 107, 107, 0.65);
 }
 
-#confusionCanvas {
-  aspect-ratio: 18 / 13;
+.eval-visuals {
+  display: grid;
+  grid-template-columns: 1fr 0.62fr;
+  gap: 8px;
+  padding: 0 12px 12px;
 }
 
-@media (max-width: 880px) {
-  .topbar,
-  .control-strip,
-  .metrics-grid,
+.eval-visuals canvas {
+  aspect-ratio: 1.25 / 1;
+}
+
+@media (max-width: 1120px) {
+  .trainer-dashboard,
   .workspace {
     grid-template-columns: 1fr;
   }
+}
 
-  .actions {
-    justify-content: start;
+@media (max-width: 720px) {
+  .live-stats,
+  .actions,
+  .control-strip,
+  .eval-list,
+  .eval-visuals {
+    grid-template-columns: 1fr;
+  }
+
+  .live-stats article:last-child {
+    grid-column: auto;
+  }
+
+  .inspector-header {
+    align-items: start;
+    flex-direction: column;
   }
 }
